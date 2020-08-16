@@ -4,6 +4,8 @@ Publish and subscribe demo with websocket in Go
 
 ## Demo
 
+### Html
+
 Initialize websocket in static `index.html`:
 
 ```javascript
@@ -25,55 +27,61 @@ Initialize websocket in static `index.html`:
 </script>
 ```
 
+### Message
+
 `Message` is the structure of subscribing and publishing messages.
 
 ```go
+// Message is the structure of subscribing and publishing messages.
 type Message struct {
     // Action type, publish or subscribe
     Action actionType `json:"action"`
+
     // The topic used to subscribe or publish messages
     Topic string `json:"topic"`
+
     // Message to send
     Msg json.RawMessage `json:"msg"`
 }
+```
 
-// Pubsub is responsible for handling publish and subscribe.
-type Pubsub struct {
-    // saving clients that subscribe the topic.
-    subscriptions map[string][]*client.Client
+### Client
+
+`Client` contains the websocket connection and a randomly generated id.
+
+```go
+type Client struct {
+    // The uuid of client
+    id string
+
+    // IP from websocket connection
+    ip string
+
+    // Websocket connection
+    conn *websocket.Conn
+
+    // Send buffer channel
+    send chan []byte
+
+    // Pubsub pointer
+    ps *Pubsub
+
+    // Whether the websocket connection is closed
+    closed bool
 }
 ```
 
-`HandleMessage` handles pub and sub messages.
+### Pubsub
+
+`Pubsub` saves the connected clients, and responsible for handling publish and subscribe.
 
 ```go
-func (ps *Pubsub) HandleMessage(cli *client.Client) {
-    p, err := cli.ReadMessage()
-    if err != nil {
-        return
-    }
+type Pubsub struct {
+    // The mutex to protect connections
+    mutex sync.RWMutex
 
-    var msg Message
-    if err = json.Unmarshal(p, &msg); err != nil {
-        fmt.Println("ReadMessage unmarshal message failed,", err)
-        _ = cli.WriteTextMessage("invalid message")
-        return
-    }
-
-    fmt.Printf("action: %v, topic: %s, msg: %s\n", msg.Action, msg.Topic, string(msg.Msg))
-
-    switch msg.Action {
-    case actionTypeSubscribe:
-        ps.subscribe(msg.Topic, cli)
-    case actionTypePublish:
-        if len(msg.Msg) == 0 {
-            _ = cli.WriteTextMessage("invalid message")
-            return
-        }
-        ps.publish(msg.Topic, msg.Msg)
-    default:
-        _ = cli.WriteTextMessage("invalid action")
-    }
+    // Registered clients.
+    clients map[*Client]map[string]struct{}
 }
 ```
 
@@ -84,6 +92,8 @@ Execute the following in the terminal：
 ```
 go run cmd/main.go
 ```
+
+### browser
 
 You can enter in the browser's Console:
 
@@ -105,6 +115,16 @@ output:
 
 ```
 Server message: "This is a broadcast"
+```
+
+### wscat
+
+```
+wscat -c "ws://localhost:9999/ws"
+Connected (press CTRL+C to quit)
+> {"action":"subscribe","topic":"abc"}
+> {"action":"publish","topic":"abc","msg":"This is a broadcast"}
+< "This is a broadcast"
 ```
 
 ## License

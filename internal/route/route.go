@@ -1,3 +1,4 @@
+// Package route contains homepage and websocket routing.
 package route
 
 import (

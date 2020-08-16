@@ -1,10 +1,11 @@
+// Package pubsub stores clients connection, and responsible
+// for subscribing and publishing messages
 package pubsub
 
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/alandtsang/pubsub/internal/client"
+	"sync"
 )
 
 type actionType string
@@ -18,73 +19,59 @@ const (
 type Message struct {
 	// Action type, publish or subscribe
 	Action actionType `json:"action"`
+
 	// The topic used to subscribe or publish messages
 	Topic string `json:"topic"`
+
 	// Message to send
 	Msg json.RawMessage `json:"msg"`
 }
 
-// Pubsub is responsible for handling publish and subscribe.
+// Pubsub saves the connected clients, and responsible for handling publish and subscribe.
 type Pubsub struct {
-	// saving clients that subscribe the topic.
-	subscriptions map[string][]*client.Client
+	// The mutex to protect connections
+	mutex sync.RWMutex
+
+	// Registered clients.
+	clients map[*Client]map[string]struct{}
 }
 
 // New return a new Pubsub structure pointer.
-func New() *Pubsub {
+func NewPubSub() *Pubsub {
 	return &Pubsub{
-		subscriptions: make(map[string][]*client.Client),
+		clients: make(map[*Client]map[string]struct{}),
 	}
 }
 
-// HandleMessage handles pub and sub messages.
-func (ps *Pubsub) HandleMessage(cli *client.Client) {
-	p, err := cli.ReadMessage()
-	if err != nil {
-		return
+// AddClient adds new client to map.
+func (ps *Pubsub) AddClient(cli *Client) {
+	ps.mutex.Lock()
+	ps.clients[cli] = make(map[string]struct{})
+	ps.mutex.Unlock()
+	fmt.Printf("New client %s from %s connected\n", cli.GetID(), cli.GetIP())
+}
+
+// RemoveClient removes client from the map.
+func (ps *Pubsub) RemoveClient(cli *Client) {
+	ps.mutex.Lock()
+	if _, ok := ps.clients[cli]; ok {
+		delete(ps.clients, cli)
+		cli.Close()
+		fmt.Printf("Remove client %s\n", cli.GetID())
 	}
+	ps.mutex.Unlock()
+}
 
-	var msg Message
-	if err = json.Unmarshal(p, &msg); err != nil {
-		fmt.Println("ReadMessage unmarshal message failed,", err)
-		_ = cli.WriteTextMessage("invalid message")
-		return
-	}
-
-	fmt.Printf("action: %v, topic: %s, msg: %s\n", msg.Action, msg.Topic, string(msg.Msg))
-
-	switch msg.Action {
-	case actionTypeSubscribe:
-		ps.subscribe(msg.Topic, cli)
-	case actionTypePublish:
-		if len(msg.Msg) == 0 {
-			_ = cli.WriteTextMessage("invalid message")
-			return
+// Publish publishes msg to all clients subscribed to topic.
+func (ps *Pubsub) Publish(topic string, msg []byte) {
+	for cli, topics := range ps.clients {
+		if _, ok := topics[topic]; ok {
+			cli.send <- msg
 		}
-		ps.publish(msg.Topic, msg.Msg)
-	default:
-		_ = cli.WriteTextMessage("invalid action")
 	}
 }
 
-func (ps *Pubsub) publish(topic string, message interface{}) {
-	clients, ok := ps.subscriptions[topic]
-	if !ok {
-		fmt.Printf("invalid topic %s\n", topic)
-		return
-	}
-
-	msg, err := json.Marshal(message)
-	if err != nil {
-		fmt.Printf("publish json marshal message failed, %v", err)
-		return
-	}
-
-	for _, cli := range clients {
-		_ = cli.WriteTextMessage(string(msg))
-	}
-}
-
-func (ps *Pubsub) subscribe(topic string, cli *client.Client) {
-	ps.subscriptions[topic] = append(ps.subscriptions[topic], cli)
+// Subscribe records the topic subscribed by the client.
+func (ps *Pubsub) Subscribe(topic string, cli *Client) {
+	ps.clients[cli][topic] = struct{}{}
 }
