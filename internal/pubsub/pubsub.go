@@ -4,7 +4,7 @@ package pubsub
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"sync"
 )
 
@@ -48,7 +48,7 @@ func (ps *Pubsub) AddClient(cli *Client) {
 	ps.mutex.Lock()
 	ps.clients[cli] = make(map[string]struct{})
 	ps.mutex.Unlock()
-	fmt.Printf("New client %s from %s connected\n", cli.GetID(), cli.GetIP())
+	log.Printf("New client %s from %s connected", cli.GetID(), cli.GetIP())
 }
 
 // RemoveClient removes client from the map.
@@ -57,7 +57,7 @@ func (ps *Pubsub) RemoveClient(cli *Client) {
 	if _, ok := ps.clients[cli]; ok {
 		delete(ps.clients, cli)
 		cli.Close()
-		fmt.Printf("Remove client %s\n", cli.GetID())
+		log.Printf("Remove client %s", cli.GetID())
 	}
 	ps.mutex.Unlock()
 }

@@ -5,7 +5,7 @@ package pubsub
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -80,11 +80,11 @@ func (c *Client) Read() {
 	for {
 		_, p, err := c.conn.ReadMessage()
 		if err != nil {
-			fmt.Printf("client %s read message failed, %v\n", c.id, err)
+			log.Printf("client %s read message failed, %v", c.id, err)
 			return
 		}
 
-		fmt.Printf("client %s recv: %s\n", c.id, string(p))
+		log.Printf("client %s recv: %s", c.id, string(p))
 		p = bytes.TrimSpace(bytes.Replace(p, newline, space, -1))
 		process(c, p)
 	}
@@ -102,14 +102,14 @@ func (c *Client) Write() {
 		case message, ok := <-c.send:
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				fmt.Printf("client %s is disconnected\n", c.id)
+				log.Printf("client %s is disconnected", c.id)
 				return
 			}
 			_ = c.conn.WriteMessage(websocket.TextMessage, message)
 		case <-ticker.C:
-			fmt.Printf("write ping message to client %s\n", c.id)
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("ping client %s failed\n", c.id)
 				c.ps.RemoveClient(c)
 				return
 			}
@@ -122,7 +122,6 @@ func (c *Client) Close() {
 	if !c.closed {
 		_ = c.conn.Close()
 		c.closed = true
-		fmt.Printf("client %s closed successfully\n", c.id)
 	}
 }
 
@@ -138,7 +137,7 @@ func process(cli *Client, p []byte) {
 		cli.ps.Subscribe(msg.Topic, cli)
 	case actionTypePublish:
 		if len(msg.Msg) == 0 {
-			fmt.Println("invalid message content")
+			log.Println("invalid message content")
 			return
 		}
 
